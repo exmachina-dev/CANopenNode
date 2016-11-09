@@ -1,0 +1,13 @@
+{
+  "name": "CANopenNode",
+  "keywords": "CAN, CANopen",
+  "desciption": "CANopenNode stack",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/exmachina-dev/CANopenNode.git",
+    "branch": "mbed"
+  },
+  "frameworks": "mbed",
+  "version": "1.0",
+  "platforms": "*"
+}
