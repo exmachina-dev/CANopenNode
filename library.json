@@ -10,8 +10,4 @@
   "frameworks": "mbed",
   "version": "1.0",
   "platforms": "*"
-  "include":
-    [
-      "stack/*"
-    ]
 }
