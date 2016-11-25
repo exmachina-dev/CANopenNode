@@ -8,13 +8,10 @@
     "branch": "mbed"
   },
   "frameworks": "mbed",
-  "version": "1.1",
-  "platforms": "*",
-  "build": {
-    "flags": [
-      "-I stack/",
-      "-I stack/lpc1768",
-      "-I application/"
+  "version": "1.0",
+  "platforms": "*"
+  "include":
+    [
+      "stack/*"
     ]
-  }
 }
