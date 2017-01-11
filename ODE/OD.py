@@ -45,6 +45,7 @@ class Object(object):
             raise ValueError('Bad memory type: \'{}\''.format(self.memory_type))
         self.description = kwargs.get('description', '')
         self.default = kwargs.get('default', None)
+        self.disabled = kwargs.get('disabled', False)
         self._is_child = False
 
         self._children = {}
@@ -81,6 +82,7 @@ class Object(object):
             'data_type': self.data_type.name if self.data_type else None,
             'memory_type': self.memory_type.name if self.memory_type else None,
             'access_type': self.access_type.name if self.access_type else None,
+            'disabled': self.disabled,
             'default': self.default,
             'parent': self.parent,
         }
