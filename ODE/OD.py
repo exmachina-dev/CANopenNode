@@ -1,6 +1,10 @@
 # -*- coding: utf-8 -*-
 
-import OD_types as ODT
+from OD_types import MemoryType as _MT
+from OD_types import DataType as _DT
+from OD_types import ObjectType as _OT
+from OD_types import AccessType as _AT
+from OD_types import PDOMapping as _PM
 
 
 class Object(object):
@@ -9,7 +13,7 @@ class Object(object):
 
         try:
             self.name = kwargs['name']
-            obt = getattr(ODT.ObjectType, kwargs['object_type'])
+            obt = getattr(_OT, kwargs['object_type'])
             self.object_type = obt
 
         except KeyError as e:
@@ -29,10 +33,10 @@ class Object(object):
         self.access_type = None
         try:
             dt, at = kwargs['data_type'], kwargs['access_type']
-            self.data_type = getattr(ODT.DataType, dt) if dt else None
-            self.access_type = getattr(ODT.AccessType, at) if at else None
+            self.data_type = getattr(_DT, dt) if dt else None
+            self.access_type = getattr(_AT, at) if at else None
         except KeyError as e:
-            if obt is not ODT.ObjectType.RECORD:
+            if obt is not _OT.RECORD:
                 raise ValueError(
                     'Missing required argument for \'{}\': {}'
                     .format(kwargs['name'], key))
@@ -40,18 +44,32 @@ class Object(object):
         self.memory_type = kwargs.get('memory_type', None)
         try:
             if self.memory_type:
-                self.memory_type = getattr(ODT.MemoryType, self.memory_type)
+                self.memory_type = getattr(_MT, self.memory_type)
         except AttributeError:
             raise ValueError('Bad memory type: \'{}\''.format(self.memory_type))
+
         self.description = kwargs.get('description', '')
         self.default = kwargs.get('default', None)
         self.disabled = kwargs.get('disabled', False)
+
+        self.PDO_mapping = kwargs.get('PDO_mapping', None)
+        self.TPDO_detect_COS = kwargs.get('TPDO_detect_COS', None)
+
         self._is_child = False
 
         self._children = {}
 
         if self.parent:
             self._is_child = True
+
+        self.access_function_name = kwargs.get('access_function_name', None)
+        self.access_function_precode = kwargs.get('access_function_precode', None)
+        self.access_function_postcode = kwargs.get('access_function_postcode', None)
+
+        if self.default is not None:
+            self.default = self._detect_dt()
+
+        self.value = self.default
 
     def add_child(self, subindex, **child):
         if self.is_child:
@@ -82,10 +100,83 @@ class Object(object):
             'data_type': self.data_type.name if self.data_type else None,
             'memory_type': self.memory_type.name if self.memory_type else None,
             'access_type': self.access_type.name if self.access_type else None,
+            'PDO_mapping': self.PDO_mapping.name if self.PDO_mapping else None,
+            'access_function_name': self.access_function_name if self.access_function_name else None,
+            'access_function_precode': self.access_function_precode if self.access_function_precode else None,
+            'access_function_postcode': self.access_function_postcode if self.access_function_postcode else None,
             'disabled': self.disabled,
             'default': self.default,
             'parent': self.parent,
         }
+
+    @property
+    def cdatatype(self):
+        dt = self.data_type.cname
+
+        if self.data_type in (_DT.VSTRING, _DT.OSTRING, _DT.USTRING):
+            if self.value is None:
+                dt += '[0]'
+            else:
+                dt += '[{:d}]'.format(len(self.value))
+
+        return dt
+
+    @property
+    def clen(self):
+        if self.data_type.is_signed_integer or self.data_type.is_unsigned_integer:
+            return self.data_type.bsize
+        elif self.data_type.is_array:
+            return len(self.value) if self.value is not None else 0
+
+    @property
+    def cvalue(self):
+        if self.data_type.is_signed_integer or self.data_type.is_unsigned_integer:
+            max_range = 2 ** self.data_type.bsize
+
+            if self.data_type.is_unsigned_integer:
+                min_range = 0
+            else:
+                min_range = max_range * -1 - 1
+
+            self.value = 0 if self.value is None else self.value
+            if not min_range <= self.value <= max_range:
+                raise ValueError('Invalid default value for {0.data_type}: \
+                                 {0.default}'.format(self))
+        elif self.data_type.is_array:
+            return '{\'' + '\', \''.join(*self.default) + '\'}' if self.default is not None else '{}'
+
+    @property
+    def cattribute(self):
+        attr = self.memory_type.value
+
+        if self.access_type != _AT.WO:
+            attr |= 0x04
+        if self.access_type in (_AT.WO, _AT.RW):
+            attr |= 0x08
+        if self.PDO_mapping in (_PM.OPT, _PM.RPDO):
+            attr |= 0x10
+        if self.PDO_mapping in (_PM.OPT, _PM.TPDO):
+            attr |= 0x20
+        if self.TPDO_detect_COS:
+            attr |= 0x40
+        if self.data_type.bsize not in (-1, 1):
+            attr |= 0x80
+
+        return attr
+
+    @property
+    def uid(self):
+        tokens = self.name.strip()
+        tokens = tokens.split()
+        uid = ''
+        for token in tokens:
+            if len(token) >= 2:
+                utoken = token[0].upper() + token[1:]
+            else:
+                utoken = token
+            uid += utoken
+
+        return uid
 
     @property
     def children(self):
@@ -94,6 +185,14 @@ class Object(object):
     @property
     def is_child(self):
         return self._is_child
+
+    def _detect_dt(self):
+        if '$NODEID+' in self.default.replace(' ', ''):
+            self.add_nodeid = True
+            self.default = self.default.replace(' ', '').replace('$NODEID+', '')
+
+        if self.data_type in (_DT.INT8,):
+            return int(self.default)
 
     def __str__(self):
         if self.is_child:

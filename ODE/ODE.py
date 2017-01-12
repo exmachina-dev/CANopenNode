@@ -5,6 +5,7 @@ import logging
 
 import OD_types
 import OD
+import OD_cexport
 
 logger = logging.getLogger(__name__)
 
@@ -57,3 +58,28 @@ if __name__ == "__main__":
             l += len(o.children)
 
         print('Objects in this file: {:d}'.format(l))
+    elif args.command == 'generate_files':
+        cex = OD_cexport.CExport(od)
+        cex.populate()
+
+        print(cex.OD_C_OD)
+        print(cex.OD_C_OD)
+        print(cex.OD_H_info)
+        print(cex.OD_H_macros)
+        print(cex.OD_H_typedefs)
+        print(cex.OD_H_RAM)
+        print(cex.OD_H_EEPROM)
+        print(cex.OD_H_ROM)
+        print(cex.OD_H_aliases)
+
+        print(cex.OD_C_initRAM)
+        print(cex.OD_C_initEEPROM)
+        print(cex.OD_C_initROM)
+        print(cex.OD_C_records)
+
+        print(cex.OD_C_functions)
+        print(cex.OD_C_OD)
+
+        print(cex.OD_names)
+
+        print(cex.combined_objects)
