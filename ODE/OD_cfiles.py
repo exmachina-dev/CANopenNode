@@ -4,7 +4,7 @@
 CO_OD_H = '''
 /*******************************************************************************
 
-   File: CO{OD_H_file.reference}_OD.h
+   File: CO{OD_info[reference]}_OD.h
    CANopen Object Dictionary.
 
    Copyright (C) 2004-2008 Janez Paternoster
@@ -37,106 +37,106 @@ CO_OD_H = '''
 
 *******************************************************************************/
 
-#ifndef CO_OD{OD_H_file.reference}_H
-#define CO_OD{OD_H_file.reference}_H
+#ifndef CO_OD{OD_info[reference]}_H
+#define CO_OD{OD_info[reference]}_H
 
 
 /*******************************************************************************
    CANopen DATA DYPES
 *******************************************************************************/
-   typedef uint8_t      UNSIGNED8;
-   typedef uint16_t     UNSIGNED16;
-   typedef uint32_t     UNSIGNED32;
-   typedef uint64_t     UNSIGNED64;
-   typedef int8_t       INTEGER8;
-   typedef int16_t      INTEGER16;
-   typedef int32_t      INTEGER32;
-   typedef int64_t      INTEGER64;
-   typedef float32_t    REAL32;
-   typedef float64_t    REAL64;
-   typedef char_t       VISIBLE_STRING;
-   typedef oChar_t      OCTET_STRING;
-   typedef domain_t     DOMAIN;
+typedef uint8_t      UNSIGNED8;
+typedef uint16_t     UNSIGNED16;
+typedef uint32_t     UNSIGNED32;
+typedef uint64_t     UNSIGNED64;
+typedef int8_t       INTEGER8;
+typedef int16_t      INTEGER16;
+typedef int32_t      INTEGER32;
+typedef int64_t      INTEGER64;
+typedef float32_t    REAL32;
+typedef float64_t    REAL64;
+typedef char_t       VISIBLE_STRING;
+typedef oChar_t      OCTET_STRING;
+typedef domain_t     DOMAIN;
 
 
 /*******************************************************************************
-   FILE INFO:
-      FileName:     {CO_H_file.name}
-      FileVersion:  {CO_H_file.version}
-      CreationTime: {CO_H_file.creation_time}
-      CreationDate: {CO_H_file.creation_date}
-      CreatedBy:    {CO_H_file.creator}
+    FILE INFO:
+        FileName:     {OD_info[name]}
+        FileVersion:  {OD_info[version]}
+        CreationTime: {OD_info[creation_time]}
+        CreationDate: {OD_info[creation_date]}
+        CreatedBy:    {OD_info[creator]}
 *******************************************************************************/
 
 
 /*******************************************************************************
-   DEVICE INFO:
-{OD_H_info}
+    DEVICE INFO:
+{OD_device_info}
 *******************************************************************************/
 
 
 /*******************************************************************************
-   FEATURES
+    FEATURES
 *******************************************************************************/
 {OD_H_macros}
 
 
 /*******************************************************************************
-   OBJECT DICTIONARY
+    OBJECT DICTIONARY
 *******************************************************************************/
-   #define CO{OD_H_file.reference}_OD_NoOfElements             "+CO_OD_C_OD.length.toString()+"
+   #define CO{OD_info[reference]}_OD_NoOfElements             {OD_C_OD_length}
 
 
 /*******************************************************************************
-   TYPE DEFINITIONS FOR RECORDS
+    TYPE DEFINITIONS FOR RECORDS
 *******************************************************************************/
 {OD_H_typedefs}
 
 
 /*******************************************************************************
-   STRUCTURES FOR VARIABLES IN DIFFERENT MEMORY LOCATIONS
+    STRUCTURES FOR VARIABLES IN DIFFERENT MEMORY LOCATIONS
 *******************************************************************************/
-#define  CO{OD_H_file.reference}_OD_FIRST_LAST_WORD     0x55 //Any value from 0x01 to 0xFE. If changed, EEPROM will be reinitialized.
+#define  CO{OD_info[reference]}_OD_FIRST_LAST_WORD     0x55 //Any value from 0x01 to 0xFE. If changed, EEPROM will be reinitialized.
 
 /***** Structure for RAM variables ********************************************/
-struct sCO{OD_H_file.reference}_OD_RAM{
+struct sCO{OD_info[reference]}_OD_RAM{{
                UNSIGNED32     FirstWord;
 
 {OD_H_RAM}
 
                UNSIGNED32     LastWord;
-};
+}};
 
 /***** Structure for EEPROM variables *****************************************/
-struct sCO{OD_H_file.reference}_OD_EEPROM{
+struct sCO{OD_info[reference]}_OD_EEPROM{{
                UNSIGNED32     FirstWord;
 
 {OD_H_EEPROM}
 
                UNSIGNED32     LastWord;
-};
+}};
 
 
 /***** Structure for ROM variables ********************************************/
-struct sCO{OD_H_file.reference}_OD_ROM{
+struct sCO{OD_info[reference]}_OD_ROM{{
                UNSIGNED32     FirstWord;
 
 {OD_H_ROM}
 
                UNSIGNED32     LastWord;
-};
+}};
 
 
 /***** Declaration of Object Dictionary variables *****************************/
-extern struct sCO{OD_H_file.reference}_OD_RAM CO{OD_H_file.reference}_OD_RAM;
+extern struct sCO{OD_info[reference]}_OD_RAM CO{OD_info[reference]}_OD_RAM;
 
-extern struct sCO{OD_H_file.reference}_OD_EEPROM CO{OD_H_file.reference}_OD_EEPROM;
+extern struct sCO{OD_info[reference]}_OD_EEPROM CO{OD_info[reference]}_OD_EEPROM;
 
-extern struct sCO{OD_H_file.reference}_OD_ROM CO{OD_H_file.reference}_OD_ROM;
+extern struct sCO{OD_info[reference]}_OD_ROM CO{OD_info[reference]}_OD_ROM;
 
 
 /*******************************************************************************
-   ALIASES FOR OBJECT DICTIONARY VARIABLES
+    ALIASES FOR OBJECT DICTIONARY VARIABLES
 *******************************************************************************/
 {OD_H_aliases}
 
@@ -146,7 +146,7 @@ extern struct sCO{OD_H_file.reference}_OD_ROM CO{OD_H_file.reference}_OD_ROM;
 CO_OD_C = '''
 /*******************************************************************************
 
-   File - CO{OD_C_file.reference}_OD.c
+   File - CO{OD_info[reference]}_OD.c
    CANopen Object Dictionary.
 
    Copyright (C) 2004-2008 Janez Paternoster
@@ -182,42 +182,42 @@ CO_OD_C = '''
 
 
 #include "CO_driver.h"
-#include "CO{OD_C_file.reference}_OD.h"
+#include "CO{OD_info[reference]}_OD.h"
 #include "CO_SDO.h"
 
 
 /*******************************************************************************
-   DEFINITION AND INITIALIZATION OF OBJECT DICTIONARY VARIABLES
+    DEFINITION AND INITIALIZATION OF OBJECT DICTIONARY VARIABLES
 *******************************************************************************/
 
 /***** Definition for RAM variables *******************************************/
-struct sCO{OD_C_file.reference}_OD_RAM CO{OD_C_file.reference}_OD_RAM = {
-           CO{OD_C_file.reference}_OD_FIRST_LAST_WORD,
+struct sCO{OD_info[reference]}_OD_RAM CO{OD_info[reference]}_OD_RAM = {{
+    CO{OD_info[reference]}_OD_FIRST_LAST_WORD,
 
-{OD_C_init_RAM}
+{OD_C_initRAM}
 
-           CO{OD_C_file.reference}_OD_FIRST_LAST_WORD,
-};
+   CO{OD_info[reference]}_OD_FIRST_LAST_WORD,
+}};
 
 
 /***** Definition for EEPROM variables ****************************************/
-struct sCO{OD_C_file.reference}_OD_EEPROM CO{OD_C_file.reference}_OD_EEPROM = {
-           CO{OD_C_file.reference}_OD_FIRST_LAST_WORD,
+struct sCO{OD_info[reference]}_OD_EEPROM CO{OD_info[reference]}_OD_EEPROM = {{
+    CO{OD_info[reference]}_OD_FIRST_LAST_WORD,
 
-{OD_C_init_EEPROM}
+{OD_C_initEEPROM}
 
-           CO{OD_C_file.reference}_OD_FIRST_LAST_WORD,
-};
+    CO{OD_info[reference]}_OD_FIRST_LAST_WORD,
+}};
 
 
 /***** Definition for ROM variables *******************************************/
-   struct sCO{OD_C_file.reference}_OD_ROM CO{OD_C_file.reference}_OD_ROM = {    //constant variables, stored in flash
-           CO{OD_C_file.reference}_OD_FIRST_LAST_WORD,
+struct sCO{OD_info[reference]}_OD_ROM CO{OD_info[reference]}_OD_ROM = {{    //constant variables, stored in flash
+    CO{OD_info[reference]}_OD_FIRST_LAST_WORD,
 
-{OD_C_init_ROM}
+{OD_C_initROM}
 
-           CO{OD_C_file.reference}_OD_FIRST_LAST_WORD
-};
+    CO{OD_info[reference]}_OD_FIRST_LAST_WORD
+}};
 
 
 /*******************************************************************************
@@ -231,13 +231,14 @@ struct sCO{OD_C_file.reference}_OD_EEPROM CO{OD_C_file.reference}_OD_EEPROM = {
 *******************************************************************************/
 #define WRITING (dir == 1)
 #define READING (dir == 0)
+
 {OD_C_functions}
 
 
 /*******************************************************************************
    OBJECT DICTIONARY
 *******************************************************************************/
-const CO_OD_entry_t CO{OD_C_file.reference}_OD[CO{OD_C_file.reference}_OD_NoOfElements] = {
+const CO_OD_entry_t CO{OD_info[reference]}_OD[CO{OD_info[reference]}_OD_NoOfElements] = {{
 {OD_C_OD}
-};
+}};
 '''

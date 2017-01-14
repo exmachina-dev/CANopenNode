@@ -66,6 +66,10 @@ class DataType(Enum):
         return False
 
     @property
+    def is_integer(self):
+        return self.is_unsigned_integer or self.is_signed_integer
+
+    @property
     def is_array(self):
         if self in (DataType.VSTRING, DataType.OSTRING, DataType.USTRING):
             return True

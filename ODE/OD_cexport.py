@@ -1,6 +1,7 @@
 # -*- coding: utf-8 -*-
 
 import logging
+from collections import defaultdict
 
 from OD import ObjectDirectory
 
@@ -10,6 +11,8 @@ from OD_types import ObjectType as _OT
 # from OD_types import AccessType as _AT
 # from OD_types import PDOMapping as _PM
 
+from OD_cfiles import CO_OD_C, CO_OD_H
+
 lg = logging.getLogger(__name__)
 
 
@@ -18,9 +21,9 @@ class CExport(object):
         if not isinstance(od, ObjectDirectory):
             raise TypeError('od must be an {} instance.'.format(type(ObjectDirectory)))
 
-        self.OD_info = {
-            'reference': '',
-        }
+        self.OD_info = defaultdict(lambda: '???',)
+        self.OD_info['reference'] = ''
+
         self.OD_H_macros = []
         self.OD_H_typedefs = []
         self.OD_H_RAM = []
@@ -37,6 +40,7 @@ class CExport(object):
         self.OD_C_OD = []
 
         self.OD_names = []
+        self.OD_device_info = ''
 
         self._populated = False
 
@@ -55,27 +59,13 @@ class CExport(object):
             self.populate()
 
     def gen_features(self):
-        for feature in self.OD.features:
-            aobjs = []
+        for fname in self.OD.features:
+            feature = self.OD.features[fname]
+            aobjs = tuple(feature.indexes)
 
-            for aobj in feature.associated_objects:
-                if aobj.index_step < 1:
-                    aobj.index_step = 1
-                if aobj.max_index:
-                    nbr = 0
-                    for i in range(aobj.index, aobj.max_index, aobj.index_step):
-                        aobjs.append(i)
-                        self.combined_objects[i] = {
-                            'first_index': aobj.index,
-                            'current_count': nbr,
-                        }
-                        nbr += 1
-                        if nbr >= feature.value:
-                            break
-
-                    self.combined_objects[aobj.index]['count'] = nbr
-                else:
-                    aobjs.append(i)
+            for index in aobjs:
+                if index in self.OD.objects:
+                    self.OD.objects[index].add_feature(feature)
 
             if len(aobjs) > 16:
                 aobjs_comment = '// Associated objects from \
@@ -91,20 +81,31 @@ class CExport(object):
                 'CO{0.OD_info[reference]}_NO_{1.macro_name}'
                 .format(self, feature), feature.value, aobjs_comment))
 
-            print(aobjs)
-
     def gen_objects(self):
 
         # CO_ODF(void*, UINT16…)
-        self.OD_C_functions.append((
+        self.OD_C_functions.append(
             'UNSIGNED32 CO_ODF{0.OD_info[reference]}(void*, UNSIGNED16, '
             'UNSIGNED8, UNSIGNED16*, UNSIGNED16, UNSIGNED8, void*, const void*);'
-            '').format(self))
+            ''.format(self))
 
         for index, obj in self.OD.objects.items():
-            print(index)
             var = {}
 
+            _brackets = False
+
+            ot = obj.object_type
+            odt = obj.data_type
+            omt = obj.memory_type
+            odi = self.OD_info
+
+            ocname = obj.uid
+            ocdt = obj.cdata_type
+            if ot is not _OT.RECORD:
+                oclen = obj.clen
+                ocvalue = obj.cvalue
+
+            # Check if a custom function is defined
             if obj.access_function_name:
                 # TODO: Add custom function
                 # self.add_function(
@@ -117,151 +118,199 @@ class CExport(object):
             else:
                 obj.access_function_name = 'CO_ODF'
 
-            cobj = {}
-
-            if index in self.combined_objects.keys():
-                cobj = self.combined_objects[index]
-                if cobj['first_index'] == index:
-                    cobj['name'] = obj.name
-                    cobj['object_type'] = obj.object_type
-                    cobj['sub_number'] = obj.sub_number
-                    cobj['memory_type'] = obj.memory_type
-                else:
-                    fobj = self.combined_objects[cobj['first_index']]
+            print('{0.index:#x} {0.uid} c{0.is_combined:d} f{0.is_first:d} {0.feature}'.format(obj))
+            # First check parameter consistency across combined objects
+            if obj.is_combined:
+                if not obj.is_first:
+                    fobj = self.OD.objects[obj.first_index]
                     try:
-                        if fobj['name'] != obj.name:
-                            raise ValueError('name')
-                        if fobj['object_type'] != obj.object_type:
+                        if fobj.object_type != obj.object_type:
                             raise ValueError('object_type')
-                        if fobj['sub_number'] != obj.sub_number:
-                            raise ValueError('sub_number')
-                        if fobj['memory_type'] != obj.memory_type:
+                        if fobj.memory_type != obj.memory_type:
                             raise ValueError('memory_type')
 
-                        self.combined_objects[cobj['first_index']] = fobj
+                        if odt in (_OT.VAR, _OT.ARRAY):
+                            if fobj.name != obj.name:
+                                raise ValueError('name')
+                            if fobj.data_type != obj.data_type:
+                                raise ValueError('data_type')
+                            if fobj.access_type != obj.access_type:
+                                raise ValueError('access_type')
+                            if fobj.PDO_mapping != obj.PDO_mapping:
+                                raise ValueError('PDO_mapping')
+                        elif odt is _OT.RECORD:
+                            if fobj.access_type != obj.access_type:
+                                raise ValueError('access_type')
+                            if fobj.PDO_mapping != obj.PDO_mapping:
+                                raise ValueError('PDO_mapping')
                     except ValueError as e:
                         lg.error((
                             'Error in object {0.index:#x}. This '
                             'object is combined with {1.index:#x}. {2!s} '
                             'must be the same').format(obj, fobj, e))
+                        import sys
+                        sys.exit(1)
 
-                self.combined_objects[index] = cobj
-
-            if index not in self.combined_objects.keys():
-                if obj.uid in self.OD_names:
+            # Check cname is unique
+            if not obj.is_combined or obj.is_first:
+                if ocname in self.OD_names:
                     raise ValueError((
-                        'Duplicated name for object {0:#x}: {1.uid}'
-                        '').format(index, obj))
+                        'Duplicated name for object {0:#x}: {1}'
+                        '').format(index, ocname))
                 else:
-                    self.OD_names.append(obj.uid)
+                    self.OD_names.append(ocname)
 
-            if obj.object_type == _OT.VAR:
-                default_msize = obj.data_type.bsize
+            # Generate code for initialization, definitions, aliases and others
+            var_def_fmt = '/* {index:<10} */ {type:<31} {name};'
+            var_alias_comment_fmt = '/* {index:<#8x} data type: {type} */'
+            var_alias_define_fmt = '    #define {name:<49} {value}'
+            var_alias_define_fmt = '    #define {name:<49} {value}'
+            var_typedefs_fmt = ('/* {index:<#8x} */  typedef '
+                                'struct{{\n{sub_definitions}\n}} {type};')
+            subvar_def_fmt = '        {name};'
+            subvar_struct_fmt = '        {{{pointer}, {attribute}, {mem_size}}}'
 
-                _brackets = False
+            if not obj.is_combined or obj.is_first:   # Not a combined object
 
-                if index not in self.combined_objects.keys():
-                    cdt = obj.cdatatype
-                    var['definition'] = (
-                        '/* {:#x} */  {:<15};'
-                        '').format(index, '{}[{}]'.format(
-                            obj.uid, obj.clen if obj.data_type.is_array else ''))
-
-                    self.OD_H_aliases.append((
-                        '/* {:#x}, data type: {}{} */'
-                        '').format(index, cdt, 'array' if '[' in cdt else ''))
-                    self.OD_H_aliases.append((
-                        '    #define OD{0[reference]}_{1.uid:<40}'
-                        'CO{0[reference]}_OD_{1.memory_type}.{1.uid}'
-                        '').format(self.OD_info, obj))
-
-                elif self.combined_objects[index]['first_index'] == index:
-                    cobj = self.combined_objects[index]
-                    cobj['data_type'] = obj.data_type
-                    cobj['access_type'] = obj.access_type
-                    cobj['PDO_mapping'] = obj.PDO_mapping
-                    cobj['default_msize'] = default_msize
+                if obj.is_first:
                     _brackets = True
-                    self.combined_objects[index] = cobj
+                    self.OD_H_aliases.append(var_alias_comment_fmt.format(
+                        index=index, type='{}{}'.format(ocdt,
+                            ', array[{}]'.format(obj.feature.count)
+                            if obj.feature.count > 1 else '')))
+                    var['definition'] = var_def_fmt.format(
+                        index='{:#6x}[{}]'.format(index, obj.feature.count),
+                        type=ocdt, name='{}{}'.format(ocname,
+                            '[{}]'.format(obj.feature.count)
+                            if obj.feature.count > 1 else ''))
+                else:
+                    self.OD_H_aliases.append(var_alias_comment_fmt.format(
+                        index=index, type=ocdt + ', array' if '[' in ocdt else ''))
+                    var['definition'] = var_def_fmt.format(
+                            index='{:#6x}'.format(index), type=ocdt,
+                        name='{}{}'.format(ocname,
+                            '[{}]'.format(oclen) if odt and odt.is_array else ''))
 
-                    self.OD_H_aliases.append('/* {:#x}, data type: {.name}{} */'.format(
-                        index, obj.data_type,
-                        ', array[{}]'.format(cobj) if cobj['count'] else ''))
-                    self.OD_H_aliases.append(
-                        '    #define OD{0[reference]}_{1.uid:<40}\
-                        CO{0[reference]}_OD_{1.memory_type}.{1.uid}'.format(
-                            self.OD_info, obj))
-                else:   # Next combined objects
-                    try:
-                        if cobj['first_index']['data_type'] != obj.data_type:
-                            raise ValueError('data_type')
-                        if cobj['first_index']['access_type'] != obj.access_type:
-                            raise ValueError('access_type')
-                        if cobj['first_index']['PDO_mapping'] != obj.PDO_mapping:
-                            raise ValueError('PDO_mapping')
-                        if cobj['first_index']['default_msize'] != default_msize:
-                            raise ValueError('length of default value')
-                    except ValueError as e:
-                        lg.error('Error in object {0.index:#x}. This \
-                            object is combined with {1.index:#x}. {2!s} \
-                            must be the same'.format(obj, fobj, e))
+                self.OD_H_aliases.append(var_alias_define_fmt.format(
+                    name='OD{0[reference]}_{1}'.format(odi, ocname),
+                    value='CO{0[reference]}_OD_{1}.{2}'.format(
+                        odi, omt.name, ocname)))
 
-                var['init'] = '/* {0:#x} */ {2[0]}{{{1}}}{2[1]},'.format(
-                    index, obj.cvalue, '{}' if _brackets else '  ')
+                if ot is _OT.VAR and odt.is_array:
+                    self.OD_H_aliases.append('    #define {:<50}{}'.format(
+                        'ODL{0[reference]}_{1}_stringLength'.format(odi, ocname),
+                        obj.clen))
+
+                if ot is _OT.ARRAY:
+                    # Append array length to aliases
+                    self.OD_H_aliases.append(var_alias_define_fmt.format(
+                        name='ODL{0[reference]}_{1}_arrayLength'.format(odi, ocname),
+                        value=len(obj.children) - 1))
+
+                if ot is _OT.RECORD:
+                    subv_defs = []
+                    subv_attrs = []
+                    subv_struct = []
+                    subv_inits = []
+                    for cindex in obj.children:
+                        child = obj.children[cindex]
+                        subv_defs.append(subvar_def_fmt.format(
+                            name=child.cname + '[{}]'.format(child.clen)
+                            if child.data_type.is_array else ''))
+                        subv_attrs.append(child.cattribute)
+                        if child.data_type is _DT.DOMAIN:
+                            ptr = '0x00'
+                        else:
+                            ptr = '(void*)&CO{0[reference]}_OD_{1}.{2}.{3}'.format(
+                                odi, omt.name, ocname,
+                                child.cname + '[0]' if child.data_type.is_array else '')
+                        subv_struct.append(subvar_struct_fmt.format(
+                            pointer=ptr, attribute=child.cattribute,
+                            mem_size=child.clen))
+                        subv_inits.append(child.cvalue)
+
+                    self.OD_H_typedefs.append(var_typedefs_fmt.format(
+                        index=index, sub_definitions='\n'.join(subv_defs),
+                        type='OD{0[reference]}_{1}_t'.format(odi, ocname)))
+            # End of not obj.is_combined or obj.is_first
+
+            if ot is _OT.VAR:
+                var['init'] = '/* {0:<#8x} */ {2}{{{1}}}{3},'.format(
+                    index, ocvalue, *('{', '}') if _brackets else ('', ''))
+            elif ot is _OT.ARRAY:
+                pass    # TODO: from output.js@468
+
+            if ot is not _OT.RECORD:
                 var['attribute'] = obj.cattribute
 
-                if obj.data_type.is_array:
-                    if (index not in self.combined_objects.keys() or
-                            self.combined_objects[index]['first_index'] == index):
+                var['pointer'] = (
+                    '(void*)&CO{0[reference]}_OD_'
+                    '{1}.{2}{3}[0];'
+                    '').format(
+                        self.OD_info, omt.name, ocname, obj.index)  # current_count == subindex ??
+            else:
+                var['pointer'] = (
+                    '(void*)&CO{0[reference]}_OD_'
+                    '{1}.{2}{3}[0];'
+                    '').format(odi, omt.name, ocname,
+                               obj.index)   # current_count == subindex ??
 
-                        self.OD_H_aliases.append('      #define {:<50} {}'.format(
-                            'ODL{0[reference]}_{1.uid}_stringLength'.format(self.OD_info, obj),
-                            obj.clen))
+            if obj.data_type == _DT.DOMAIN:
+                self.OD_C_OD.append(
+                    '{{{0:#x}, 0x00, {1.cattribute:#x}, '
+                    '{1.data_type.bsize}, {2.pointer}}},");'.format(
+                        index, obj, var))
 
-                    var['pointer'] = (
-                        '(void*)&CO{0[reference]}_OD_'
-                        '{1.memory_type.name}.{1.uid}{2}[0];'
-                        '').format(
-                            self.OD_info, obj, cobj.get('current_count', ''))
-                else:
-                    var['pointer'] = (
-                        '(void*)&CO{0[reference]}_OD_'
-                        '{1.memory_type.name}.{1.uid}{2}[0];'
-                        '').format(self.OD_info, obj,
-                                   cobj.get('current_count', ''))
+            if (index not in self.combined_objects.keys() or
+                    self.combined_objects[index]['first_index'] == index):
 
-                if obj.data_type == _DT.DOMAIN:
-                    self.OD_C_OD.append(
-                        '{{0:#x}, 0x00, {1.cattribute:#x}, '
-                        '{1.data_type.bsize}, {2.pointer}},");'.format(
-                            index, obj, var))
+                self.OD_C_OD.append('')
 
-                if (index not in self.combined_objects.keys() or
-                        self.combined_objects[index]['first_index'] == index):
-
-                    self.OD_C_OD.append('')
-            elif obj.object_type == _OT.ARRAY:
-                var['definition'] = '// ARRAY'
-                var['init'] = '// ARRAY'
-            elif obj.object_type == _OT.RECORD:
-                var['definition'] = '// RECORD'
-                var['init'] = '// RECORD'
-
+            # Assign object its memory slot
             mt = obj.memory_type.name
-            if index not in self.combined_objects:
+            if not obj.is_combined:
                 getattr(self, 'OD_H_{}'.format(mt)).append(var['definition'])
                 getattr(self, 'OD_C_init{}'.format(mt)).append(var['init'])
-            elif self.combined_objects[index]['first_index'] == index:
+            elif obj.is_first:
                 getattr(self, 'OD_H_{}'.format(mt)).append(var['definition'])
                 getattr(self, 'OD_C_init{}'.format(mt)).append(var['init'])
-                self.combined_initializations[index] = len(getattr(self, 'OD_C_init{}'.format(mt)))
+                # self.combined_initializations[index] = len(getattr(self, 'OD_C_init{}'.format(mt)))
                 # Add index to combined_init
             else:
                 getattr(self, 'OD_C_init{}'.format(mt)).insert(
-                    self.combined_objects['index']['first_index'], var['init'])
+                    obj.first_index, var['init'])
                 # for i in range(0, len(self.combined_initializations)):
                 #     if
+
+    def dump(self):
+        d = dict(**self.__dict__)
+        d['OD_H_macros'] = '\n'.join(self.OD_H_macros)
+        d['OD_H_typedefs'] = '\n'.join(self.OD_H_typedefs)
+        d['OD_H_RAM'] = '\n'.join(self.OD_H_RAM)
+        d['OD_H_EEPROM'] = '\n'.join(self.OD_H_EEPROM)
+        d['OD_H_ROM'] = '\n'.join(self.OD_H_ROM)
+        d['OD_H_aliases'] = '\n'.join(self.OD_H_aliases)
+
+        d['OD_C_initRAM'] = '\n'.join(self.OD_C_initRAM)
+        d['OD_C_initEEPROM'] = '\n'.join(self.OD_C_initEEPROM)
+        d['OD_C_initROM'] = '\n'.join(self.OD_C_initROM)
+        d['OD_C_records'] = '\n'.join(self.OD_C_records)
+
+        d['OD_C_functions'] = '\n'.join(self.OD_C_functions)
+        d['OD_C_OD'] = '\n'.join(self.OD_C_OD)
+        d['OD_C_OD_length'] = len(self.OD_C_OD)
+
+        # d['OD_names'] = '\n'.join(self.OD_names)
+        return d
 
     @property
     def is_populated(self):
         return self._populated
+
+    @property
+    def c_file(self):
+        return CO_OD_C.format(**self.dump())
+
+    @property
+    def h_file(self):
+        return CO_OD_H.format(**self.dump())
