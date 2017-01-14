@@ -4,9 +4,9 @@ from enum import Enum, unique
 
 @unique
 class MemoryType(Enum):
-    RAM     = 0x01
-    EEPROM  = 0x02
-    ROM     = 0x03
+    ROM     = 0x01
+    RAM     = 0x02
+    EEPROM  = 0x03
 
 
 @unique

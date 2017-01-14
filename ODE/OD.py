@@ -78,7 +78,11 @@ class Feature(object):
         # Append all possible indexes to associated object
         for aobj in self._associated_objects.values():
             if aobj.max_index:
-                aobj.indexes = list(range(aobj.index, aobj.max_index, aobj.step_index))
+                if self.value:
+                    max_index = aobj.index + (self.value * aobj.step_index) + 1
+                    aobj.indexes = list(range(aobj.index, max_index, aobj.step_index))
+                else:
+                    aobj.indexes = list(range(aobj.index, aobj.max_index, aobj.step_index))
 
         self.first_indexes = [aobj.first_index for aobj in self.associated_objects.values()]
 
@@ -101,6 +105,13 @@ class Feature(object):
         for aobj in self._associated_objects.values():
             if index in aobj.indexes:
                 return aobj.first_index
+
+    def index_of(self, index):
+        for aobj in self._associated_objects.values():
+            try:
+                return aobj.indexes.index(index)
+            except ValueError:
+                continue
 
     @property
     def associated_objects(self):
@@ -139,9 +150,11 @@ class Feature(object):
 
     @property
     def indexes(self):
-        for aobj in self._associated_objects.values():
+        indexes = list()
+        for aobj in self.associated_objects.values():
             for i in aobj.indexes:
-                yield i
+                indexes.append(i)
+        return indexes
 
     def __contains__(self, item):
         if item in self.indexes:
@@ -291,6 +304,12 @@ class Object(object):
         return False
 
     @property
+    def feature_position(self):
+        if self.feature:
+            return self.feature.index_of(self.index)
+        return 0
+
+    @property
     def first_index(self):
         if self.feature is not None:
             return self.feature.first_index_of(self.index)
@@ -350,20 +369,23 @@ class Object(object):
 
     @property
     def cattribute(self):
-        attr = self.memory_type.value
+        try:
+            attr = self.memory_type.value
 
-        if self.access_type != _AT.WO:
-            attr |= 0x04
-        if self.access_type in (_AT.WO, _AT.RW):
-            attr |= 0x08
-        if self.PDO_mapping in (_PM.OPT, _PM.RPDO):
-            attr |= 0x10
-        if self.PDO_mapping in (_PM.OPT, _PM.TPDO):
-            attr |= 0x20
-        if self.TPDO_detect_COS:
-            attr |= 0x40
-        if self.data_type.bsize not in (-1, 1):
-            attr |= 0x80
+            if self.access_type != _AT.WO:
+                attr |= 0x04
+            if self.access_type in (_AT.WO, _AT.RW):
+                attr |= 0x08
+            if self.PDO_mapping in (_PM.OPT, _PM.RPDO):
+                attr |= 0x10
+            if self.PDO_mapping in (_PM.OPT, _PM.TPDO):
+                attr |= 0x20
+            if self.TPDO_detect_COS:
+                attr |= 0x40
+            if self.data_type.bsize not in (-1, 1):
+                attr |= 0x80
+        except AttributeError:
+            attr = 0x00
 
         return attr
 

@@ -71,7 +71,7 @@ if __name__ == "__main__":
             # print('# INFO', *cex.OD_info, sep='\n')
 
             # print('# MACROS', *cex.OD_H_macros, sep='\n')
-            # print('# TYPEDEFS', cex.OD_H_typedefs, sep='\n')
+            print('# TYPEDEFS', *cex.OD_H_typedefs, sep='\n')
             print('# H_RAM', *cex.OD_H_RAM, sep='\n')
             # print('# H_EEPROM', *cex.OD_H_EEPROM, sep='\n')
             print('# H_ROM', *cex.OD_H_ROM, sep='\n')
@@ -88,4 +88,4 @@ if __name__ == "__main__":
             # print('# OD_NAMES', *cex.OD_names, sep='\n')
         else:
             print(cex.h_file)
-            # print(cex.c_file)
+            print(cex.c_file)

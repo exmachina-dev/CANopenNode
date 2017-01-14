@@ -167,16 +167,56 @@ class CExport(object):
             var_alias_define_fmt = '    #define {name:<49} {value}'
             var_typedefs_fmt = ('/* {index:<#8x} */  typedef '
                                 'struct{{\n{sub_definitions}\n}} {type};')
-            subvar_def_fmt = '        {name};'
-            subvar_struct_fmt = '        {{{pointer}, {attribute}, {mem_size}}}'
+            var_pointer_fmt = '(void*)&{name}'
+            var_OD_record_fmt = ('/* {index:<#8x} */ const CO_OD_entryRecord_t {name} ='
+                                 '{{\n{sub_structures}\n}};')
+            var_OD_entry_fmt = '    {{{index:#x}, {length:#04x}, {attribute:#04x}, {mem_size:}, {pointer}}},'
 
-            if not obj.is_combined or obj.is_first:   # Not a combined object
+            subvar_def_fmt = '        {type:<19} {name};'
+            subvar_struct_fmt = '        {{{pointer}, {attribute:#04x}, {mem_size:}}}'
+
+            # First, generate data for subobjects if any
+            if ot is _OT.ARRAY:
+                # First subobject in an array defines array size
+                array_init = [sobj.cvalue for sobj in obj.children.values()][1:]
+                # TODO: Check memory_size for combined objects
+            elif ot is _OT.RECORD:
+                record_init = [sobj.cvalue for sobj in obj.children.values()]
+                record_definitions = []
+                record_aliases = []
+                record_struct = []
+                for sobj in obj.children.values():
+                    if sobj.uid in record_aliases:  # Check if subobject name is unique inside this object
+                        raise ValueError(
+                            'sub_object {:#x} must have a unique name in {:#x}'
+                            .format(sobj.index, index))
+
+                    record_aliases.append(sobj.uid)
+
+                    socdt = '{}{}'.format(sobj.cdata_type,
+                        '[{}]'.format(sobj.clen)
+                        if sobj.data_type.is_array else '')
+                    record_definitions.append(socdt)
+
+                    if sobj.data_type is _DT.DOMAIN:
+                        ptr = '0x00'
+                    else:
+                        ptr = var_pointer_fmt.format(
+                            name='CO{0[reference]}_OD_{1}.{2}[{3}].{4}'.format(
+                                odi, omt.name, ocname, obj.feature_position,
+                                sobj.uid + ('[0]' if sobj.data_type.is_array else '')))
+
+                    record_struct.append(subvar_struct_fmt.format(
+                        pointer=ptr, attribute=sobj.cattribute, mem_size=sobj.clen))
+            # End of subobjects generation
+
+            if not obj.is_combined or obj.is_first:   # Not a combined object or first combined
 
                 if obj.is_first:
                     _brackets = True
                     self.OD_H_aliases.append(var_alias_comment_fmt.format(
                         index=index, type='{}{}'.format(ocdt,
-                            ', array[{}]'.format(obj.feature.count)
+                            (', array[{}]'.format(obj.feature.count))
                             if obj.feature.count > 1 else '')))
                     var['definition'] = var_def_fmt.format(
                         index='{:#6x}[{}]'.format(index, obj.feature.count),
@@ -185,9 +225,9 @@ class CExport(object):
                             if obj.feature.count > 1 else ''))
                 else:
                     self.OD_H_aliases.append(var_alias_comment_fmt.format(
-                        index=index, type=ocdt + ', array' if '[' in ocdt else ''))
+                        index=index, type=ocdt + (', array' if '[' in ocdt else '')))
                     var['definition'] = var_def_fmt.format(
-                            index='{:#6x}'.format(index), type=ocdt,
+                        index='{:#6x}'.format(index), type=ocdt,
                         name='{}{}'.format(ocname,
                             '[{}]'.format(oclen) if odt and odt.is_array else ''))
 
@@ -200,84 +240,98 @@ class CExport(object):
                     self.OD_H_aliases.append('    #define {:<50}{}'.format(
                         'ODL{0[reference]}_{1}_stringLength'.format(odi, ocname),
                         obj.clen))
-
-                if ot is _OT.ARRAY:
+                elif ot is _OT.ARRAY:
                     # Append array length to aliases
                     self.OD_H_aliases.append(var_alias_define_fmt.format(
                         name='ODL{0[reference]}_{1}_arrayLength'.format(odi, ocname),
                         value=len(obj.children) - 1))
-
-                if ot is _OT.RECORD:
-                    subv_defs = []
-                    subv_attrs = []
-                    subv_struct = []
-                    subv_inits = []
-                    for cindex in obj.children:
-                        child = obj.children[cindex]
-                        subv_defs.append(subvar_def_fmt.format(
-                            name=child.cname + '[{}]'.format(child.clen)
-                            if child.data_type.is_array else ''))
-                        subv_attrs.append(child.cattribute)
-                        if child.data_type is _DT.DOMAIN:
-                            ptr = '0x00'
-                        else:
-                            ptr = '(void*)&CO{0[reference]}_OD_{1}.{2}.{3}'.format(
-                                odi, omt.name, ocname,
-                                child.cname + '[0]' if child.data_type.is_array else '')
-                        subv_struct.append(subvar_struct_fmt.format(
-                            pointer=ptr, attribute=child.cattribute,
-                            mem_size=child.clen))
-                        subv_inits.append(child.cvalue)
-
+                elif ot is _OT.RECORD:
                     self.OD_H_typedefs.append(var_typedefs_fmt.format(
-                        index=index, sub_definitions='\n'.join(subv_defs),
+                        index=index, sub_definitions='\n'.join(map(lambda x, y: subvar_def_fmt.format(type=y, name=x), record_aliases, record_definitions)),
                         type='OD{0[reference]}_{1}_t'.format(odi, ocname)))
             # End of not obj.is_combined or obj.is_first
 
+            # Initialization for object and its subobjects
             if ot is _OT.VAR:
                 var['init'] = '/* {0:<#8x} */ {2}{{{1}}}{3},'.format(
                     index, ocvalue, *('{', '}') if _brackets else ('', ''))
             elif ot is _OT.ARRAY:
-                pass    # TODO: from output.js@468
+                var['init'] = '/* {0:<#8x} */ {2}{{{1}}}{3},'.format(
+                    index, '{{{}}}'.format(', '.join(array_init)),
+                    *('{', '}') if _brackets else ('', ''))
 
-            if ot is not _OT.RECORD:
-                var['attribute'] = obj.cattribute
+                # Append aliase for suboject if name is unique
+                gen_aliases = True
+                snames = [sobj.uid for sobj in obj.children.values()]
+                for sobj in list(obj.children.values())[1:]:
+                    if snames.count(sobj.uid) > 1:
+                        gen_aliases = False
+                        break
 
-                var['pointer'] = (
-                    '(void*)&CO{0[reference]}_OD_'
-                    '{1}.{2}{3}[0];'
-                    '').format(
-                        self.OD_info, omt.name, ocname, obj.index)  # current_count == subindex ??
+                if gen_aliases:
+                    self.OD_H_aliases += [var_alias_define_fmt.format(
+                        name='ODA{0[reference]}_{1}_{2}'.format(odi, ocname, sobj.uid),
+                        value=sobj.index - 1) for sobj in list(obj.children.values())[1:]]
+                    # Substract 1 because the first element of an array is the size
+            elif ot is _OT.RECORD:
+                var['init'] = '/* {0:<#8x} */ {2}{1}{3},'.format(
+                    index, '{{{}}}'.format(', '.join(record_init)),
+                    *('{', '}') if _brackets else ('', ''))
+                # TODO: append record line in C_records
+                self.OD_C_records.append(var_OD_record_fmt.format(
+                    index=index, sub_structures=',\n'.join(record_struct),
+                    name='OD{0[reference]}_record{1:X}[{2}]'.format(
+                        odi, index, obj.clen)))
+            # End of initialization for object and its subobjects
+
+            # Pointer generation
+            if ot in (_OT.VAR, _OT.ARRAY):
+                if odt is _DT.DOMAIN:
+                    var_pointer = "0x00"
+                else:
+                    var_pointer = var_pointer_fmt.format(
+                        name='CO{0[reference]}_OD_{1}.{2}{3}{4}'.format(
+                            odi, omt.name, ocname, obj.feature_position if obj.feature_position else '',
+                            ''.join(('[0]' if ot is _OT.ARRAY else '', '[0]' if odt.is_array else ''))
+                        ))
             else:
-                var['pointer'] = (
-                    '(void*)&CO{0[reference]}_OD_'
-                    '{1}.{2}{3}[0];'
-                    '').format(odi, omt.name, ocname,
-                               obj.index)   # current_count == subindex ??
+                var_pointer = var_pointer_fmt.format(
+                    name='CO{0[reference]}_record{1:X}'.format(odi, index))
 
-            if obj.data_type == _DT.DOMAIN:
-                self.OD_C_OD.append(
-                    '{{{0:#x}, 0x00, {1.cattribute:#x}, '
-                    '{1.data_type.bsize}, {2.pointer}}},");'.format(
-                        index, obj, var))
+            # # VAR
+            # CO_OD_C_OD.push("{0x"+index+", 0x00, 0x"+g_byteToHexString(attribute)+",
+            #         "+defaultValueMemorySize+", "+
+            #     varPtr+"},");
+            # # ARRAY
+            # CO_OD_C_OD.push("{0x"+index+", 0x"+g_byteToHexString(subNumberVal-1)+",
+            #         0x"+g_byteToHexString(attribute)+", "+subDefaultValueMemorySize+", "+
+            #     varPtr+"},");
+            # # RECORD
+            # CO_OD_C_OD.push("{0x"+index+", 0x"+g_byteToHexString(subNumberVal-1)+", 0x00,  0, (void*)&"+
+            #     "OD"+ODfileNameReference+"_record"+index+"},");
 
-            if (index not in self.combined_objects.keys() or
-                    self.combined_objects[index]['first_index'] == index):
+            # Add data to OD
+            self.OD_C_OD.append(var_OD_entry_fmt.format(
+                index=index, length=(len(obj.children) - 1) if obj.children else 0,
+                attribute=obj.cattribute, mem_size=obj.clen if ot is not _OT.RECORD else 0,
+                pointer=var_pointer))
 
-                self.OD_C_OD.append('')
+            # Extralines
+            if not obj.is_combined or obj.is_first:
+                self.OD_C_OD.append('')         # Add extraline at the end of OD
+                self.OD_H_aliases.append('')    # Add extraline at the end of aliases
 
             # Assign object its memory slot
-            mt = obj.memory_type.name
             if not obj.is_combined:
-                getattr(self, 'OD_H_{}'.format(mt)).append(var['definition'])
-                getattr(self, 'OD_C_init{}'.format(mt)).append(var['init'])
+                getattr(self, 'OD_H_{}'.format(omt.name)).append(var['definition'])
+                getattr(self, 'OD_C_init{}'.format(omt.name)).append(var['init'])
             elif obj.is_first:
-                getattr(self, 'OD_H_{}'.format(mt)).append(var['definition'])
-                getattr(self, 'OD_C_init{}'.format(mt)).append(var['init'])
+                getattr(self, 'OD_H_{}'.format(omt.name)).append(var['definition'])
+                getattr(self, 'OD_C_init{}'.format(omt.name)).append(var['init'])
                 # self.combined_initializations[index] = len(getattr(self, 'OD_C_init{}'.format(mt)))
                 # Add index to combined_init
             else:
-                getattr(self, 'OD_C_init{}'.format(mt)).insert(
+                getattr(self, 'OD_C_init{}'.format(omt.name)).insert(
                     obj.first_index, var['init'])
                 # for i in range(0, len(self.combined_initializations)):
                 #     if
