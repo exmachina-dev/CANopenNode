@@ -54,9 +54,23 @@ class CExport(object):
         self.gen_features()
         self.gen_objects()
 
-    def export_to(self, **kwargs):
+    def write(self, **kwargs):
         if not self.is_populated:
             self.populate()
+
+        c_file = kwargs.get('c_file', None)
+        h_file = kwargs.get('h_file', None)
+
+        if c_file:
+            with c_file as f:
+                f.write(self.c_file)
+        else:
+            lg.warn('C file not specified, skipping.')
+
+        if h_file:
+            pass
+        else:
+            lg.warn('H file not specified, skipping.')
 
     def gen_features(self):
         for fname in self.OD.features:
@@ -92,8 +106,6 @@ class CExport(object):
         for index, obj in self.OD.objects.items():
             var = {}
 
-            _brackets = False
-
             ot = obj.object_type
             odt = obj.data_type
             omt = obj.memory_type
@@ -118,7 +130,7 @@ class CExport(object):
             else:
                 obj.access_function_name = 'CO_ODF'
 
-            print('{0.index:#x} {0.uid} c{0.is_combined:d} f{0.is_first:d} {0.feature}'.format(obj))
+            lg.debug('{0.index:#x} {0.uid} c{0.is_combined:d} f{0.is_first:d} {0.feature}'.format(obj))
             # First check parameter consistency across combined objects
             if obj.is_combined:
                 if not obj.is_first:
@@ -162,6 +174,7 @@ class CExport(object):
 
             # Generate code for initialization, definitions, aliases and others
             var_def_fmt = '/* {index:<10} */ {type:<31} {name};'
+            var_init_fmt = '/* {index:<#8x} */ {value},'
             var_alias_comment_fmt = '/* {index:<#8x} data type: {type} */'
             var_alias_define_fmt = '    #define {name:<49} {value}'
             var_alias_define_fmt = '    #define {name:<49} {value}'
@@ -213,7 +226,6 @@ class CExport(object):
             if not obj.is_combined or obj.is_first:   # Not a combined object or first combined
 
                 if obj.is_first:
-                    _brackets = True
                     self.OD_H_aliases.append(var_alias_comment_fmt.format(
                         index=index, type='{}{}'.format(ocdt,
                             (', array[{}]'.format(obj.feature.count))
@@ -253,12 +265,10 @@ class CExport(object):
 
             # Initialization for object and its subobjects
             if ot is _OT.VAR:
-                var['init'] = '/* {0:<#8x} */ {2}{{{1}}}{3},'.format(
-                    index, ocvalue, *('{', '}') if _brackets else ('', ''))
+                init_value = ocvalue
             elif ot is _OT.ARRAY:
-                var['init'] = '/* {0:<#8x} */ {2}{{{1}}}{3},'.format(
-                    index, '{{{}}}'.format(', '.join(array_init)),
-                    *('{', '}') if _brackets else ('', ''))
+                _cvalue = ', '.join(array_init)
+                init_value = '{{{}}}'.format(_cvalue)
 
                 # Append aliase for suboject if name is unique
                 gen_aliases = True
@@ -274,14 +284,20 @@ class CExport(object):
                         value=sobj.index - 1) for sobj in list(obj.children.values())[1:]]
                     # Substract 1 because the first element of an array is the size
             elif ot is _OT.RECORD:
-                var['init'] = '/* {0:<#8x} */ {2}{1}{3},'.format(
-                    index, '{{{}}}'.format(', '.join(record_init)),
-                    *('{', '}') if _brackets else ('', ''))
-                # TODO: append record line in C_records
+                _cvalue = ', '.join(record_init)
+                init_value = '{{{}}}'.format(_cvalue)
+
                 self.OD_C_records.append(var_OD_record_fmt.format(
                     index=index, sub_structures=',\n'.join(record_struct),
                     name='OD{0[reference]}_record{1:X}[{2}]'.format(
                         odi, index, obj.clen)))
+
+            if obj.is_first:
+                init_value = '{' + init_value
+            elif obj.is_last:
+                init_value = init_value[:-1] + '}}'
+
+            var['init'] = var_init_fmt.format(index=index, value=init_value)
             # End of initialization for object and its subobjects
 
             # Pointer generation

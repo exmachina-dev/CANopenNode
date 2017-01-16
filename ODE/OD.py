@@ -1,11 +1,15 @@
 # -*- coding: utf-8 -*-
 
+import logging
+
 from utils import str_to_hex
 from OD_types import MemoryType as _MT
 from OD_types import DataType as _DT
 from OD_types import ObjectType as _OT
 from OD_types import AccessType as _AT
 from OD_types import PDOMapping as _PM
+
+lg = logging.getLogger(__name__)
 
 
 class _AObj(object):
@@ -101,10 +105,18 @@ class Feature(object):
     def is_first(self, index):
         return index in self.first_indexes
 
+    def is_last(self, index):
+        return index == self.last_index_of(index)
+
     def first_index_of(self, index):
         for aobj in self._associated_objects.values():
             if index in aobj.indexes:
                 return aobj.first_index
+
+    def last_index_of(self, index):
+        for aobj in self._associated_objects.values():
+            if index in aobj.indexes:
+                return aobj.indexes[-1]
 
     def index_of(self, index):
         for aobj in self._associated_objects.values():
@@ -210,22 +222,30 @@ class Object(object):
                     .format(kwargs['name'], key))
 
         self.memory_type = kwargs.get('memory_type',
-            self.parent.memory_type.name if self.is_child else None)
+                self.parent.memory_type.name if self.is_child else None)
         try:
             if self.memory_type:
                 self.memory_type = getattr(_MT, self.memory_type)
         except AttributeError:
-            raise ValueError('Bad memory type: \'{}\''.format(self.memory_type))
+            if not self.is_child:
+                raise ValueError('Bad memory type: \'{}\''.format(self.memory_type))
 
         self.description = kwargs.get('description', '')
         self.default = kwargs.get('default', None)
         self.value = kwargs.get('value', None)
         self.disabled = kwargs.get('disabled', False)
 
-        self.PDO_mapping = kwargs.get('PDO_mapping', None)
-        self.TPDO_detect_COS = kwargs.get('TPDO_detect_COS', None)
+        self.TPDO_detect_COS = kwargs.get('tpdo_detect_cos', False) # keys are lower_case
 
-        self._is_child = False
+        try:
+            pm = kwargs.get('pdo_mapping', None) # keys are lower_case
+            if pm == 'no':
+                pm = None
+
+            self.PDO_mapping = getattr(_PM, pm) if pm else None
+        except AttributeError:
+            raise ValueError('Bad PDO mapping type: \'{}\''.format(pm))
+
 
         self._children = {}
         self._feature = None
@@ -265,6 +285,8 @@ class Object(object):
             child['data_type'] = self.data_type.name
 
         if 'access_type' not in child.keys():
+            lg.warn('Missing access type for {:#x}.{:#x}, access_type set to {.name}'
+                    .format(self.index, subindex, self.access_type))
             child['access_type'] = self.access_type.name
 
         self._children[subindex] = Object(index=subindex, parent=self, **child)
@@ -296,6 +318,10 @@ class Object(object):
     @property
     def is_first(self):
         return self.is_combined and self.feature.is_first(self.index)
+
+    @property
+    def is_last(self):
+        return self.is_combined and self.feature.is_last(self.index)
 
     @property
     def is_combined(self):
@@ -356,7 +382,7 @@ class Object(object):
             if self.data_type.bsize >= 8:
                 return '{:#014x}L'.format(self.value)
             elif self.data_type.bsize >= 4:
-                return '{:#010x}'.format(self.value)
+                return '{:#010x}L'.format(self.value)
             elif self.data_type.bsize >= 2:
                 return '{:#006x}'.format(self.value)
             else:
@@ -370,9 +396,9 @@ class Object(object):
     @property
     def cattribute(self):
         try:
-            attr = self.memory_type.value
+            attr = self.memory_type.value if self.memory_type else 0x0
 
-            if self.access_type != _AT.WO:
+            if self.access_type is not _AT.WO:
                 attr |= 0x04
             if self.access_type in (_AT.WO, _AT.RW):
                 attr |= 0x08
@@ -384,7 +410,8 @@ class Object(object):
                 attr |= 0x40
             if self.data_type.bsize not in (-1, 1):
                 attr |= 0x80
-        except AttributeError:
+        except AttributeError as e:
+            lg.error('ERR: {}'.format(e))
             attr = 0x00
 
         return attr

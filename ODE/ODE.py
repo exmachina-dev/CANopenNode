@@ -7,7 +7,7 @@ from utils import str_to_hex
 import OD
 import OD_cexport
 
-logger = logging.getLogger(__name__)
+lg = logging.getLogger(__name__)
 
 
 def OD_from_file(fd):
@@ -33,59 +33,88 @@ def OD_from_file(fd):
             index, subindex = map(str_to_hex, section.split('.'))
             obj = od.objects.get(index)
             if not obj:
-                logger.warn('Missing index {:x} in OD, skipping {} object.'
+                lg.warn('Missing index {:x} in OD, skipping {} object.'
                             .format(index, section))
             else:
                 obj.add_child(subindex, **config[section])
 
     return od
 
+def do_stats(od, args):
+    if args.count:
+        l = len(od.objects)
+        for o in od.objects.values():
+            l += len(o.children)
+
+        lg.info('Objects in this file: {:d}'.format(l))
+        print(l)
+    else:
+        od.tree()
+
+def do_generate(od, args):
+    cex = OD_cexport.CExport(od)
+    cex.populate()
+
+    if args.debug:
+        print('# INFO', *cex.OD_info, sep='\n')
+
+        print('# MACROS', *cex.OD_H_macros, sep='\n')
+        print('# TYPEDEFS', *cex.OD_H_typedefs, sep='\n')
+        print('# H_RAM', *cex.OD_H_RAM, sep='\n')
+        print('# H_EEPROM', *cex.OD_H_EEPROM, sep='\n')
+        print('# H_ROM', *cex.OD_H_ROM, sep='\n')
+        print('# H_aliases', *cex.OD_H_aliases, sep='\n')
+
+        print('# initRAM', *cex.OD_C_initRAM, sep='\n')
+        print('# initEEPROM', *cex.OD_C_initEEPROM, sep='\n')
+        print('# initROM', *cex.OD_C_initROM, sep='\n')
+        print('# RECORDS', *cex.OD_C_records, sep='\n')
+
+        print('# C_FUNCTIONS', *cex.OD_C_functions, sep='\n')
+        print('# C_OD', *cex.OD_C_OD, sep='\n')
+
+        print('# OD_NAMES', *cex.OD_names, sep='\n')
+    else:
+        cex.write(c_file=args.cfile, h_file=args.hfile)
+
 if __name__ == "__main__":
     import argparse
 
     parser = argparse.ArgumentParser(description='''
         ODE is an Object Dictionnary Editor''')
-    parser.add_argument('command', help='command to execute')
-    parser.add_argument('--file', '-f', type=argparse.FileType('r'),
+    parser.add_argument('--file', '-f', type=argparse.FileType('r'), required=True,
                         help='the file to read from')
-    parser.add_argument('--debug', '-d', action='store_true',
-                        help='display raw data')
+    subparsers = parser.add_subparsers(title='command', help='command to execute')
+
+    sp_stats = subparsers.add_parser('stats',
+        description='Display statistics from the file')
+    sp_generate = subparsers.add_parser('generate_files')
+
+
+    sp_stats.add_argument('--count', '-c', action='store_true',
+            help='count recognized object')
+    sp_stats.set_defaults(func=do_stats)
+
+    sp_generate.add_argument('--debug', '-d', action='store_true',
+            help='display raw data')
+    sp_generate.add_argument('--cfile', type=argparse.FileType('w'),
+            help='the C code file to write to')
+    sp_generate.add_argument('--hfile', type=argparse.FileType('w'),
+            help='the header file to write to')
+    sp_generate.set_defaults(func=do_generate)
 
     args = parser.parse_args()
 
     od = OD_from_file(args.file)
 
-    if args.command == 'tree':
-        od.tree()
-    elif args.command == 'count':
-        l = len(od.objects)
-        for o in od.objects.values():
-            l += len(o.children)
+    args.func(od, args)
 
-        print('Objects in this file: {:d}'.format(l))
-    elif args.command == 'generate_files':
-        cex = OD_cexport.CExport(od)
-        cex.populate()
+    # if args.command == 'tree':
+    #     od.tree()
+    # elif args.command == 'count':
+    #     l = len(od.objects)
+    #     for o in od.objects.values():
+    #         l += len(o.children)
 
-        if args.debug:
-            # print('# INFO', *cex.OD_info, sep='\n')
-
-            # print('# MACROS', *cex.OD_H_macros, sep='\n')
-            print('# TYPEDEFS', *cex.OD_H_typedefs, sep='\n')
-            print('# H_RAM', *cex.OD_H_RAM, sep='\n')
-            # print('# H_EEPROM', *cex.OD_H_EEPROM, sep='\n')
-            print('# H_ROM', *cex.OD_H_ROM, sep='\n')
-            print('# H_aliases', *cex.OD_H_aliases, sep='\n')
-
-            # print('# initRAM', *cex.OD_C_initRAM, sep='\n')
-            # print('# initEEPROM', *cex.OD_C_initEEPROM, sep='\n')
-            # print('# initROM', *cex.OD_C_initROM, sep='\n')
-            # print('# RECORDS', *cex.OD_C_records, sep='\n')
-
-            # print('# C_FUNCTIONS', *cex.OD_C_functions, sep='\n')
-            # print('# C_OD', *cex.OD_C_OD, sep='\n')
-
-            # print('# OD_NAMES', *cex.OD_names, sep='\n')
-        else:
-            print(cex.h_file)
-            print(cex.c_file)
+    #     lg.info('Objects in this file: {:d}'.format(l))
+    # elif args.command == 'generate_files':

@@ -84,13 +84,15 @@ class DataType(Enum):
         return self.data_type.bsize
 
 
+@unique
 class AccessType(Enum):
     CONST   = 0x01     # Constant
-    RO      = 0x01     # Read-only
-    WO      = 0x01     # Write-only
-    RW      = 0x01     # Read-write
+    RO      = 0x02     # Read-only
+    WO      = 0x03     # Write-only
+    RW      = 0x04     # Read-write
 
 
+@unique
 class PDOMapping(Enum):
     OPT     = 0x01     # Optionnal
     RPDO    = 0x02     # RPDO
