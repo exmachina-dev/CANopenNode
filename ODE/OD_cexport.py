@@ -68,7 +68,8 @@ class CExport(object):
             lg.warn('C file not specified, skipping.')
 
         if h_file:
-            pass
+            with h_file as f:
+                f.write(self.h_file)
         else:
             lg.warn('H file not specified, skipping.')
 
@@ -97,11 +98,10 @@ class CExport(object):
 
     def gen_objects(self):
 
-        # CO_ODF(void*, UINT16…)
-        self.OD_C_functions.append(
-            'UNSIGNED32 CO_ODF{0.OD_info[reference]}(void*, UNSIGNED16, '
-            'UNSIGNED8, UNSIGNED16*, UNSIGNED16, UNSIGNED8, void*, const void*);'
-            ''.format(self))
+        var_c_func_fmt = ('{1.UINT32.cname} CO_ODF{0.OD_info[reference]}(void*, '
+                '{1.UINT16.cname}, {1.UINT8.cname}, {1.UINT16.cname}*, '
+                '{1.UINT16.cname}, {1.UINT8.cname}, void*, const void*);')
+        self.OD_C_functions.append(var_c_func_fmt.format(self, _DT))
 
         for index, obj in self.OD.objects.items():
             var = {}
@@ -113,7 +113,12 @@ class CExport(object):
 
             ocname = obj.uid
             ocdt = obj.cdata_type
-            if ot is not _OT.RECORD:
+            if ot is _OT.RECORD:
+                oclen = obj.children[0].value or 1
+            elif ot is _OT.ARRAY:
+                oclen = obj.children[0].value or 1
+                ocvalue = obj.cvalue
+            else:
                 oclen = obj.clen
                 ocvalue = obj.cvalue
 
@@ -178,7 +183,7 @@ class CExport(object):
             var_alias_comment_fmt = '/* {index:<#8x} data type: {type} */'
             var_alias_define_fmt = '    #define {name:<49} {value}'
             var_alias_define_fmt = '    #define {name:<49} {value}'
-            var_typedefs_fmt = ('/* {index:<#8x} */  typedef '
+            var_typedefs_fmt = ('/* {index:<} */  typedef '
                                 'struct{{\n{sub_definitions}\n}} {type};')
             var_pointer_fmt = '(void*)&{name}'
             var_OD_record_fmt = ('/* {index:<#8x} */ const CO_OD_entryRecord_t {name} ='
@@ -215,8 +220,9 @@ class CExport(object):
                         ptr = '0x00'
                     else:
                         ptr = var_pointer_fmt.format(
-                            name='CO{0[reference]}_OD_{1}.{2}[{3}].{4}'.format(
-                                odi, omt.name, ocname, obj.feature_position,
+                            name='CO{0[reference]}_OD_{1}.{2}{3}.{4}'.format(
+                                odi, omt.name, ocname,
+                                '[{}]'.format(obj.feature_position) if obj.feature else '',
                                 sobj.uid + ('[0]' if sobj.data_type.is_array else '')))
 
                     record_struct.append(subvar_struct_fmt.format(
@@ -234,14 +240,15 @@ class CExport(object):
                         index='{:#6x}[{}]'.format(index, obj.feature.count),
                         type=ocdt, name='{}{}'.format(ocname,
                             '[{}]'.format(obj.feature.count)
-                            if obj.feature.count > 1 else ''))
+                            if obj.feature.count > 0 else ''))
                 else:
                     self.OD_H_aliases.append(var_alias_comment_fmt.format(
                         index=index, type=ocdt + (', array' if '[' in ocdt else '')))
+                    var_len = oclen if ot is _OT.ARRAY or (odt and odt.is_array) else None
                     var['definition'] = var_def_fmt.format(
                         index='{:#6x}'.format(index), type=ocdt,
                         name='{}{}'.format(ocname,
-                            '[{}]'.format(oclen) if odt and odt.is_array else ''))
+                            '[{}]'.format(var_len) if var_len else ''))
 
                 self.OD_H_aliases.append(var_alias_define_fmt.format(
                     name='OD{0[reference]}_{1}'.format(odi, ocname),
@@ -258,8 +265,9 @@ class CExport(object):
                         name='ODL{0[reference]}_{1}_arrayLength'.format(odi, ocname),
                         value=len(obj.children) - 1))
                 elif ot is _OT.RECORD:
+                    i = '{:#x}{}'.format(index, '[{}]'.format(obj.feature.count) if obj.feature else '')
                     self.OD_H_typedefs.append(var_typedefs_fmt.format(
-                        index=index, sub_definitions='\n'.join(map(lambda x, y: subvar_def_fmt.format(type=y, name=x), record_aliases, record_definitions)),
+                        index=i, sub_definitions='\n'.join(map(lambda x, y: subvar_def_fmt.format(type=y, name=x), record_aliases, record_definitions)),
                         type='OD{0[reference]}_{1}_t'.format(odi, ocname)))
             # End of not obj.is_combined or obj.is_first
 
@@ -294,10 +302,11 @@ class CExport(object):
 
             if obj.is_first:
                 init_value = '{' + init_value
-            elif obj.is_last:
-                init_value = init_value[:-1] + '}}'
+            if obj.is_last:
+                init_value = init_value + '}'
 
             var['init'] = var_init_fmt.format(index=index, value=init_value)
+
             # End of initialization for object and its subobjects
 
             # Pointer generation
@@ -312,7 +321,7 @@ class CExport(object):
                         ))
             else:
                 var_pointer = var_pointer_fmt.format(
-                    name='CO{0[reference]}_record{1:X}'.format(odi, index))
+                    name='OD{0[reference]}_record{1:X}'.format(odi, index))
 
             # # VAR
             # CO_OD_C_OD.push("{0x"+index+", 0x00, 0x"+g_byteToHexString(attribute)+",
@@ -333,7 +342,7 @@ class CExport(object):
                 pointer=var_pointer))
 
             # Extralines
-            if not obj.is_combined or obj.is_first:
+            if not obj.is_combined or obj.is_last:
                 self.OD_C_OD.append('')         # Add extraline at the end of OD
                 self.OD_H_aliases.append('')    # Add extraline at the end of aliases
 
@@ -369,6 +378,11 @@ class CExport(object):
         d['OD_C_functions'] = '\n'.join(self.OD_C_functions)
         d['OD_C_OD'] = '\n'.join(self.OD_C_OD)
         d['OD_C_OD_length'] = len(self.OD_C_OD)
+
+        for k in iter(d):
+            if isinstance(d[k], str):
+                d[k] = d[k].replace('\\SBR', '{').replace('\\EBR', '}')
+                pass
 
         # d['OD_names'] = '\n'.join(self.OD_names)
         return d

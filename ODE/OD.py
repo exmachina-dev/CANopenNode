@@ -83,7 +83,7 @@ class Feature(object):
         for aobj in self._associated_objects.values():
             if aobj.max_index:
                 if self.value:
-                    max_index = aobj.index + (self.value * aobj.step_index) + 1
+                    max_index = aobj.index + (self.value * aobj.step_index)
                     aobj.indexes = list(range(aobj.index, max_index, aobj.step_index))
                 else:
                     aobj.indexes = list(range(aobj.index, aobj.max_index, aobj.step_index))
@@ -100,6 +100,8 @@ class Feature(object):
         }
 
     def is_combined(self, index):
+        if index in self.associated_objects and not self.associated_objects[index].max_index:
+            return False
         return index in self.indexes
 
     def is_first(self, index):
@@ -158,7 +160,9 @@ class Feature(object):
 
     @property
     def macro_name(self):
-        return self.uid
+        tokens = self.name.strip()
+        tokens = tokens.split()
+        return '_'.join(tokens).upper()
 
     @property
     def indexes(self):
@@ -285,7 +289,7 @@ class Object(object):
             child['data_type'] = self.data_type.name
 
         if 'access_type' not in child.keys():
-            lg.warn('Missing access type for {:#x}.{:#x}, access_type set to {.name}'
+            lg.debug('Missing access type for {:#x}.{:#x}, access_type set to {.name}'
                     .format(self.index, subindex, self.access_type))
             child['access_type'] = self.access_type.name
 
@@ -380,11 +384,11 @@ class Object(object):
                                  '{0.default} > {1}'.format(self, max_range))
 
             if self.data_type.bsize >= 8:
-                return '{:#014x}L'.format(self.value)
+                return '{:#02x}L'.format(self.value)
             elif self.data_type.bsize >= 4:
-                return '{:#010x}L'.format(self.value)
+                return '{:#02x}L'.format(self.value)
             elif self.data_type.bsize >= 2:
-                return '{:#006x}'.format(self.value)
+                return '{:#06x}'.format(self.value)
             else:
                 return '{:#04x}'.format(self.value)
         elif self.data_type.is_array:
@@ -408,7 +412,7 @@ class Object(object):
                 attr |= 0x20
             if self.TPDO_detect_COS:
                 attr |= 0x40
-            if self.data_type.bsize not in (-1, 1):
+            if self.data_type and self.data_type.bsize not in (-1, 1):
                 attr |= 0x80
         except AttributeError as e:
             lg.error('ERR: {}'.format(e))
@@ -426,7 +430,15 @@ class Object(object):
                 utoken = token[0].upper() + token[1:]
             else:
                 utoken = token
-            uid += utoken
+
+            if len(uid) and len(utoken) >= 2 and \
+                    uid[-1].isupper() and utoken[1].isupper():
+                uid += '_' + utoken
+            else:
+                uid += utoken
+
+        if len(uid) >= 2 and uid[1].islower():
+            uid = uid[0].lower() + uid[1:]
 
         return uid
 

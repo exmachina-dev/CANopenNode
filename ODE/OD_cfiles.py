@@ -44,19 +44,19 @@ CO_OD_H = '''
 /*******************************************************************************
    CANopen DATA DYPES
 *******************************************************************************/
-typedef uint8_t      UNSIGNED8;
-typedef uint16_t     UNSIGNED16;
-typedef uint32_t     UNSIGNED32;
-typedef uint64_t     UNSIGNED64;
-typedef int8_t       INTEGER8;
-typedef int16_t      INTEGER16;
-typedef int32_t      INTEGER32;
-typedef int64_t      INTEGER64;
-typedef float32_t    REAL32;
-typedef float64_t    REAL64;
-typedef char_t       VISIBLE_STRING;
-typedef oChar_t      OCTET_STRING;
-typedef domain_t     DOMAIN;
+typedef uint8_t      CO_UNSIGNED8;
+typedef uint16_t     CO_UNSIGNED16;
+typedef uint32_t     CO_UNSIGNED32;
+typedef uint64_t     CO_UNSIGNED64;
+typedef int8_t       CO_INTEGER8;
+typedef int16_t      CO_INTEGER16;
+typedef int32_t      CO_INTEGER32;
+typedef int64_t      CO_INTEGER64;
+typedef float32_t    CO_REAL32;
+typedef float64_t    CO_REAL64;
+typedef char_t       CO_VISIBLE_STRING;
+typedef oChar_t      CO_OCTET_STRING;
+typedef domain_t     CO_DOMAIN;
 
 
 /*******************************************************************************
@@ -100,30 +100,30 @@ typedef domain_t     DOMAIN;
 
 /***** Structure for RAM variables ********************************************/
 struct sCO{OD_info[reference]}_OD_RAM{{
-               UNSIGNED32     FirstWord;
+               CO_UNSIGNED32     FirstWord;
 
 {OD_H_RAM}
 
-               UNSIGNED32     LastWord;
+               CO_UNSIGNED32     LastWord;
 }};
 
 /***** Structure for EEPROM variables *****************************************/
 struct sCO{OD_info[reference]}_OD_EEPROM{{
-               UNSIGNED32     FirstWord;
+               CO_UNSIGNED32     FirstWord;
 
 {OD_H_EEPROM}
 
-               UNSIGNED32     LastWord;
+               CO_UNSIGNED32     LastWord;
 }};
 
 
 /***** Structure for ROM variables ********************************************/
 struct sCO{OD_info[reference]}_OD_ROM{{
-               UNSIGNED32     FirstWord;
+               CO_UNSIGNED32     FirstWord;
 
 {OD_H_ROM}
 
-               UNSIGNED32     LastWord;
+               CO_UNSIGNED32     LastWord;
 }};
 
 
