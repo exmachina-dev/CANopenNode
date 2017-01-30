@@ -54,8 +54,6 @@
 #include <stdint.h>         /* for 'int8_t' to 'uint64_t' */
 #include <stdbool.h>        /* for 'true', 'false' */
 
-#define MBED_CAN 1
-
 
 /**
  * @defgroup CO_driver Driver
