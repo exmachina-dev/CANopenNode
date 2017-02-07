@@ -345,6 +345,10 @@ CO_ReturnError_t CO_init(
     if(errCnt != 0) return CO_ERROR_OUT_OF_MEMORY;
 #endif
 
+#ifndef CO_USE_GLOBALS
+    printf("CO_init: %d\r\n", CO_memoryUsed);
+#endif
+
 
     CO->CANmodule[0]->CANnormal = false;
     CO_CANsetConfigurationMode(CANbaseAddress);
